@@ -1,10 +1,13 @@
-'use strict';
+'use strict'; /* jshint -W034 */
 
 const React = require('react');
 const ReactDOM = require('react-dom');
+const when = require('when');
 const client = require('./client');
 
 const follow = require('./follow'); // function to hop multiple links by "rel"
+
+//const stompClient = require('./websocket-listener');
 
 const root = '/api';
 
@@ -15,45 +18,58 @@ class App extends React.Component {
 		this.state = {items: [], attributes: [], pageSize: 2, links: {}};
 		this.updatePageSize = this.updatePageSize.bind(this);
 		this.onCreate = this.onCreate.bind(this);
+		this.onUpdate = this.onUpdate.bind(this);
 		this.onDelete = this.onDelete.bind(this);
 		this.onNavigate = this.onNavigate.bind(this);
+		//this.refreshCurrentPage = this.refreshCurrentPage.bind(this);
+		//this.refreshAndGoToLastPage = this.refreshAndGoToLastPage.bind(this);
 	}
 
 	// tag::follow-2[]
 	loadFromServer(pageSize) {
-		follow(client, root, [
+		follow(client, root, [ // <1>
 			{rel: 'items', params: {size: pageSize}}]
-		).then(itemCollection => {
+		).then(itemCollection => { // <2>
 			return client({
 				method: 'GET',
 				path: itemCollection.entity._links.profile.href,
 				headers: {'Accept': 'application/schema+json'}
 			}).then(schema => {
 				this.schema = schema.entity;
+				this.links = itemCollection.entity._links;
 				return itemCollection;
 			});
-		}).done(itemCollection => {
+		}).then(itemCollection => { // <3>
+			return itemCollection.entity._embedded.items.map(item =>
+					client({
+						method: 'GET',
+						path: item._links.self.href
+					})
+			);
+		}).then(itemPromises => { // <4>
+			return when.all(itemPromises);
+		}).done(items => { // <5>
 			this.setState({
-				items: itemCollection.entity._embedded.items,
+				//page: this.page,
+				items: items,													
 				attributes: Object.keys(this.schema.properties),
 				pageSize: pageSize,
-				links: itemCollection.entity._links});
+				links: this.links
+			});
 		});
 	}
-	// end::follow-2[]
 
-	// tag::create[]
 	onCreate(newItem) {
-		follow(client, root, ['items']).then(itemCollection => {
+		const self = this;
+		follow(client, root, ['items']).then(response => {
 			return client({
 				method: 'POST',
-				path: itemCollection.entity._links.self.href,
+				path: response.entity._links.self.href,
 				entity: newItem,
 				headers: {'Content-Type': 'application/json'}
 			})
 		}).then(response => {
-			return follow(client, root, [
-				{rel: 'items', params: {'size': this.state.pageSize}}]);
+			return follow(client, root, [{rel: 'items', params: {'size': self.state.pageSize}}]);
 		}).done(response => {
 			if (typeof response.entity._links.last !== "undefined") {
 				this.onNavigate(response.entity._links.last.href);
@@ -64,9 +80,30 @@ class App extends React.Component {
 	}
 	// end::create[]
 
+	// tag::update[]
+	onUpdate(item, updatedItem) {
+		client({
+			method: 'PUT',
+			path: item.entity._links.self.href,
+			entity: updatedItem,
+			headers: {
+				'Content-Type': 'application/json',
+				'If-Match': item.headers.Etag
+			}
+		}).done(response => {
+			this.loadFromServer(this.state.pageSize);
+		}, response => {
+			if (response.status.code === 412) {
+				alert('DENIED: Unable to update ' +
+					item.entity._links.self.href + '. Your copy is stale.');
+			}
+		});
+	}
+	// end::update[]
+
 	// tag::delete[]
 	onDelete(item) {
-		client({method: 'DELETE', path: item._links.self.href}).done(response => {
+		client({method: 'DELETE', path: item.entity._links.self.href}).done(response => {
 			this.loadFromServer(this.state.pageSize);
 		});
 	}
@@ -74,12 +111,26 @@ class App extends React.Component {
 
 	// tag::navigate[]
 	onNavigate(navUri) {
-		client({method: 'GET', path: navUri}).done(itemCollection => {
+		client({
+			method: 'GET',
+			path: navUri
+		}).then(itemCollection => {
+			this.links = itemCollection.entity._links;
+
+			return itemCollection.entity._embedded.items.map(item =>
+					client({
+						method: 'GET',
+						path: item._links.self.href
+					})
+			);
+		}).then(itemPromises => {
+			return when.all(itemPromises);
+		}).done(items => {
 			this.setState({
-				items: itemCollection.entity._embedded.items,
-				attributes: this.state.attributes,
+				items: items,
+				attributes: Object.keys(this.schema.properties),
 				pageSize: this.state.pageSize,
-				links: itemCollection.entity._links
+				links: this.links
 			});
 		});
 	}
@@ -106,7 +157,9 @@ class App extends React.Component {
 				<ItemList items={this.state.items}
 							  links={this.state.links}
 							  pageSize={this.state.pageSize}
+							  attributes={this.state.attributes}
 							  onNavigate={this.onNavigate}
+							  onUpdate={this.onUpdate}
 							  onDelete={this.onDelete}
 							  updatePageSize={this.updatePageSize}/>
 			</div>
@@ -114,7 +167,7 @@ class App extends React.Component {
 	}
 }
 
-// tag::create-dialog[]
+
 class CreateDialog extends React.Component {
 
 	constructor(props) {
@@ -167,7 +220,55 @@ class CreateDialog extends React.Component {
 	}
 
 }
-// end::create-dialog[]
+
+class UpdateDialog extends React.Component {
+
+	constructor(props) {
+		super(props);
+		this.handleSubmit = this.handleSubmit.bind(this);
+	}
+
+	handleSubmit(e) {
+		e.preventDefault();
+		const updatedItem = {};
+		this.props.attributes.forEach(attribute => {
+			updatedItem[attribute] = ReactDOM.findDOMNode(this.refs[attribute]).value.trim();
+		});
+		this.props.onUpdate(this.props.item, updatedItem);
+		window.location = "#";
+	}
+
+	render() {
+		const inputs = this.props.attributes.map(attribute =>
+			<p key={this.props.item.entity[attribute]}>
+				<input type="text" placeholder={attribute}
+					   defaultValue={this.props.item.entity[attribute]}
+					   ref={attribute} className="field"/>
+			</p>
+		);
+
+		const dialogId = "updateItem-" + this.props.item.entity._links.self.href;
+
+		return (
+			<div key={this.props.item.entity._links.self.href}>
+				<a className="button" href={"#" + dialogId}>Update</a>
+				<div id={dialogId} className="modalDialog">
+					<div>
+						<a href="#" title="Close" className="close">X</a>
+
+						<h2>Update an item</h2>
+
+						<form>
+							{inputs}
+							<button onClick={this.handleSubmit}>Update</button>
+						</form>
+					</div>
+				</div>
+			</div>
+		)
+	}
+
+};
 
 class ItemList extends React.Component {
 
@@ -180,7 +281,7 @@ class ItemList extends React.Component {
 		this.handleInput = this.handleInput.bind(this);
 	}
 
-	// tag::handle-page-size-updates[]
+
 	handleInput(e) {
 		e.preventDefault();
 		const pageSize = ReactDOM.findDOMNode(this.refs.pageSize).value;
@@ -191,9 +292,7 @@ class ItemList extends React.Component {
 				pageSize.substring(0, pageSize.length - 1);
 		}
 	}
-	// end::handle-page-size-updates[]
 
-	// tag::handle-nav[]
 	handleNavFirst(e){
 		e.preventDefault();
 		this.props.onNavigate(this.props.links.first.href);
@@ -213,12 +312,16 @@ class ItemList extends React.Component {
 		e.preventDefault();
 		this.props.onNavigate(this.props.links.last.href);
 	}
-	// end::handle-nav[]
+	// End Copied Section
 
-	// tag::item-list-render[]
+	// Customized
 	render() {
 		const items = this.props.items.map(item =>
-			<Item key={item._links.self.href} item={item} onDelete={this.props.onDelete}/>
+			<Item key={item.entity._links.self.href}
+					  item={item}
+					  attributes={this.props.attributes}
+					  onUpdate={this.props.onUpdate}
+					  onDelete={this.props.onDelete}/>
 		);
 
 		const navLinks = [];
@@ -246,6 +349,7 @@ class ItemList extends React.Component {
 							<th>Description</th>
 							<th>Quantity </th>
 							<th></th>
+							<th></th>
 						</tr>
 						{items}
 					</tbody>
@@ -256,10 +360,9 @@ class ItemList extends React.Component {
 			</div>
 		)
 	}
-	// end::item-list-render[]
 }
 
-// tag::item[]
+
 class Item extends React.Component {
 
 	constructor(props) {
@@ -274,9 +377,14 @@ class Item extends React.Component {
 	render() {
 	    return (
 		    <tr>
-			    <td>{this.props.item.name}</td>
-			    <td>{this.props.item.description}</td>
-			    <td>{this.props.item.quantity}</td>
+			    <td>{this.props.item.entity.name}</td>
+			    <td>{this.props.item.entity.description}</td>
+			    <td>{this.props.item.entity.quantity}</td>
+			    <td>
+				<UpdateDialog item={this.props.item}
+				    attributes={this.props.attributes}
+				    onUpdate={this.props.onUpdate}/>
+			    </td>
 			    <td>
 				    <button onClick={this.handleDelete}>Delete</button>
 			    </td>
@@ -284,7 +392,6 @@ class Item extends React.Component {
 	    )
 	}
 }
-// end::item[]
 
 ReactDOM.render(
 	<App />,

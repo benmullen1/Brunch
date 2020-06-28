@@ -5,11 +5,13 @@
  */
 package com.ben.java.brunch.BrunchCore.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.io.Serializable;
 import java.util.Objects;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.Id;
+import javax.persistence.Version;
 
 /**
  *
@@ -20,6 +22,7 @@ public class Item implements Serializable {
 
     @Id @GeneratedValue 
     private Long id;
+    private @Version @JsonIgnore Long version;
     
     private String name;
     private String description;
@@ -70,6 +73,20 @@ public class Item implements Serializable {
 	this.id = id;
     }
 
+    /**
+     * @return the version
+     */
+    public Long getVersion() {
+	return version;
+    }
+
+    /**
+     * @param version the version to set
+     */
+    public void setVersion(Long version) {
+	this.version = version;
+    }
+
     public String getName() {
 	return name;
     }
@@ -97,10 +114,11 @@ public class Item implements Serializable {
     @Override
     public String toString() {
 	return "Item{"
-		+ "id=" + id
+		+ "id=" + Long.toString(id) + '\''
 		+ ", name='" + name + '\''
 		+ ", description='" + description + '\''
 		+ ", quantity='" + Integer.toString(quantity) + '\''
+		+ ", version='" + Long.toString(version) + '\''
 		+ '}';
     }
 }

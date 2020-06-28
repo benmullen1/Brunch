@@ -9,6 +9,10 @@ https://favicon.io/favicon-generator/
 Intial project setup followed this tutorial:
 https://spring.io/guides/tutorials/react-and-spring-data-rest/
 
+JSHint plugin for MVN:
+https://github.com/Acosix/acosix-maven-parent/blob/master/jshint-plugin/README.md
+
+
 Guidelines for adding plus/minus buttons to a field:
 http://jsfiddle.net/polaszk/1oyfxoor/
 
