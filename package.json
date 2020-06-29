@@ -4,7 +4,7 @@
   "description": "Demo of ReactJS + Spring Data REST",
   "repository": {
     "type": "git",
-    "url": "git@github.cum:spring-guides/tut-react-and-spring-data-rest.git"
+    "url": "git@github.com/benmullen1/Brunch.git"
   },
   "keywords": [
     "rest",
@@ -13,16 +13,18 @@
     "data",
     "react"
   ],
-  "author": "Greg L. Turnquist",
-  "license": "Apache-2.0",
+  "author": "Ben Mullen",
+  "license": "GPL v3.0",
   "bugs": {
-    "url": "https://github.cum/spring-guides/tut-react-and-spring-data-rest/issues"
+    "url": "https://github.com/benmullen1/Brunch/issues"
   },
-  "homepage": "https://github.cum/spring-guides/tut-react-and-spring-data-rest",
+  "homepage": "https://github.com/benmullen1/Brunch",
   "dependencies": {
     "react": "^16.5.2",
     "react-dom": "^16.5.2",
-    "rest": "^1.3.1"
+    "rest": "^1.3.1",
+    "sockjs-client": "^1.0.3",
+    "stompjs": "^2.3.3"
   },
   "scripts": {
     "watch": "webpack --watch -d --output ./target/classes/static/built/bundle.js"
