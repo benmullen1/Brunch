@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RepositoryEventHandler(Item.class)
-public class EventHandler {
+public class ItemRepoEventHandler {
 
 	private final SimpMessagingTemplate websocket;
 
@@ -26,7 +26,7 @@ public class EventHandler {
 	private static final String MESSAGE_PREFIX = WebSocketConfiguration.MESSAGE_PREFIX;
 
 	@Autowired
-	public EventHandler(SimpMessagingTemplate websocket, EntityLinks entityLinks) {
+	public ItemRepoEventHandler(SimpMessagingTemplate websocket, EntityLinks entityLinks) {
 		this.websocket = websocket;
 		this.entityLinks = entityLinks;
 	}

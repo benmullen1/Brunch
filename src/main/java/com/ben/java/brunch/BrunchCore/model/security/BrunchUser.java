@@ -222,4 +222,18 @@ public class BrunchUser {
 	return subordinateRemoved;
     }
     
+    /*
+    public Set<BrunchUser> getOrganization(BrunchUser user){
+	Set<BrunchUser> subordinates = user.getSubordinateUsers();
+	if (subordinates.isEmpty()){
+	    return subordinates;
+	}
+	else { 
+	    for (BrunchUser childUser: subordinates){
+		subordinates.addAll(childUser.getOrganization(childUser));
+	    }
+	}
+	return subordinates;
+    }
+    */
 }
