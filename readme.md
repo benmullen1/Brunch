@@ -1,3 +1,7 @@
+A Spring-based React application. Mainly exists to learn how to build a Spring-based React application, but also is the skeleton of other ideas we've had
+
+Currently Spring Security is enabled, only one user exists, dev/dev
+
 CSS was from "Skeleton CSS" project
 https://github.com/dhg/Skeleton
 

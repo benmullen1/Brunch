@@ -7,7 +7,7 @@ const client = require('./client');
 
 const follow = require('./follow'); // function to hop multiple links by "rel"
 
-//const stompClient = require('./websocket-listener');
+const stompClient = require('./websocket-listener');
 
 const root = '/api';
 
@@ -21,8 +21,8 @@ class App extends React.Component {
 		this.onUpdate = this.onUpdate.bind(this);
 		this.onDelete = this.onDelete.bind(this);
 		this.onNavigate = this.onNavigate.bind(this);
-		//this.refreshCurrentPage = this.refreshCurrentPage.bind(this);
-		//this.refreshAndGoToLastPage = this.refreshAndGoToLastPage.bind(this);
+		this.refreshCurrentPage = this.refreshCurrentPage.bind(this);
+		this.refreshAndGoToLastPage = this.refreshAndGoToLastPage.bind(this);
 	}
 
 	// tag::follow-2[]
@@ -40,6 +40,7 @@ class App extends React.Component {
 				return itemCollection;
 			});
 		}).then(itemCollection => { // <3>
+			this.page = itemCollection.entity.page;								  
 			return itemCollection.entity._embedded.items.map(item =>
 					client({
 						method: 'GET',
@@ -50,7 +51,7 @@ class App extends React.Component {
 			return when.all(itemPromises);
 		}).done(items => { // <5>
 			this.setState({
-				//page: this.page,
+				page: this.page,
 				items: items,													
 				attributes: Object.keys(this.schema.properties),
 				pageSize: pageSize,
@@ -60,7 +61,6 @@ class App extends React.Component {
 	}
 
 	onCreate(newItem) {
-		const self = this;
 		follow(client, root, ['items']).then(response => {
 			return client({
 				method: 'POST',
@@ -68,15 +68,7 @@ class App extends React.Component {
 				entity: newItem,
 				headers: {'Content-Type': 'application/json'}
 			})
-		}).then(response => {
-			return follow(client, root, [{rel: 'items', params: {'size': self.state.pageSize}}]);
-		}).done(response => {
-			if (typeof response.entity._links.last !== "undefined") {
-				this.onNavigate(response.entity._links.last.href);
-			} else {
-				this.onNavigate(response.entity._links.self.href);
-			}
-		});
+		})
 	}
 	// end::create[]
 
@@ -91,7 +83,6 @@ class App extends React.Component {
 				'If-Match': item.headers.Etag
 			}
 		}).done(response => {
-			this.loadFromServer(this.state.pageSize);
 		}, response => {
 			if (response.status.code === 412) {
 				alert('DENIED: Unable to update ' +
@@ -103,9 +94,7 @@ class App extends React.Component {
 
 	// tag::delete[]
 	onDelete(item) {
-		client({method: 'DELETE', path: item.entity._links.self.href}).done(response => {
-			this.loadFromServer(this.state.pageSize);
-		});
+		client({method: 'DELETE', path: item.entity._links.self.href});
 	}
 	// end::delete[]
 
@@ -127,6 +116,7 @@ class App extends React.Component {
 			return when.all(itemPromises);
 		}).done(items => {
 			this.setState({
+				page: this.page,
 				items: items,
 				attributes: Object.keys(this.schema.properties),
 				pageSize: this.state.pageSize,
@@ -144,11 +134,61 @@ class App extends React.Component {
 	}
 	// end::update-page-size[]
 
-	// tag::follow-1[]
+// tag::websocket-handlers[]
+	refreshAndGoToLastPage(message) {
+		follow(client, root, [{
+			rel: 'items',
+			params: {size: this.state.pageSize}
+		}]).done(response => {
+			if (response.entity._links.last !== undefined) {
+				this.onNavigate(response.entity._links.last.href);
+			} else {
+				this.onNavigate(response.entity._links.self.href);
+			}
+		})
+	}
+
+	refreshCurrentPage(message) {
+		follow(client, root, [{
+			rel: 'items',
+			params: {
+				size: this.state.pageSize,
+				page: this.state.page.number
+			}
+		}]).then(itemCollection => {
+			this.links = itemCollection.entity._links;
+			this.page = itemCollection.entity.page;
+
+			return itemCollection.entity._embedded.items.map(item => {
+				return client({
+					method: 'GET',
+					path: item._links.self.href
+				})
+			});
+		}).then(itemPromises => {
+			return when.all(itemPromises);
+		}).then(items => {
+			this.setState({
+				page: this.page,
+				items: items,
+				attributes: Object.keys(this.schema.properties),
+				pageSize: this.state.pageSize,
+				links: this.links
+			});
+		});
+	}
+	// end::websocket-handlers[]
+
+	// tag::register-handlers[]
 	componentDidMount() {
 		this.loadFromServer(this.state.pageSize);
+		stompClient.register([
+			{route: '/topic/newItem', callback: this.refreshAndGoToLastPage},
+			{route: '/topic/updateItem', callback: this.refreshCurrentPage},
+			{route: '/topic/deleteItem', callback: this.refreshCurrentPage}
+		]);
 	}
-	// end::follow-1[]
+	// end::register-handlers[]
 
 	render() {
 		return (
@@ -167,7 +207,7 @@ class App extends React.Component {
 	}
 }
 
-
+//Fairly Customized Section
 class CreateDialog extends React.Component {
 
 	constructor(props) {
@@ -269,6 +309,8 @@ class UpdateDialog extends React.Component {
 	}
 
 };
+
+//End Fairly Customized Section
 
 class ItemList extends React.Component {
 
